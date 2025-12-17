@@ -1,0 +1,19 @@
+[project]
+name = "order-management-service"
+version = "0.1.0"
+description = "Пример сервиса управления заказами"
+requires-python = "==3.13.4"
+dependencies = [
+    "alembic==1.17.2",
+    "asyncpg==0.31.0",
+    "fastapi==0.124.4",
+    "passlib[bcrypt]==1.7.4",
+    "psycopg2-binary==2.9.11",
+    "pydantic[email]==2.12.5",
+    "pydantic-settings==2.12.0",
+    "python-jose==3.5.0",
+    "sqlalchemy==2.0.45",
+    "uvicorn==0.38.0",
+    "python-multipart==0.0.21",
+    "bcrypt<4.0",
+]
