@@ -71,7 +71,7 @@ async def user_registry(
     "/token/",
     summary="Получение токена доступа",
     responses={
-        200: {"model": ServerResponse[pydantic_models.TokenResponse]},
+        200: {"model": pydantic_models.TokenResponse},
         400: {"model": ServerErrorResponse400},
         404: {"model": ServerErrorResponse404},
         500: {"model": ServerErrorResponse500},
@@ -79,7 +79,7 @@ async def user_registry(
 )
 async def get_token(
     response: Response, request: OAuth2PasswordRequestForm = Depends()
-) -> ServerResponse:
+):
     try:
         user_email = request.username
         user = await db_requests.get_user(user_email)
@@ -96,12 +96,14 @@ async def get_token(
         else:
             access_token = await create_access_token({"sub": user.get("email")})
 
-            return ServerResponse(
-                data=pydantic_models.TokenResponse(access_token=access_token),
-                success=True,
-                message="create",
-                status=200,
-            )
+            # return ServerResponse(
+            #     data=pydantic_models.TokenResponse(access_token=access_token),
+            #     success=True,
+            #     message="create",
+            #     status=200,
+            # )
+
+            return pydantic_models.TokenResponse(access_token=access_token)
 
     except ValueError as ve:
         return ServerResponse(data=None, success=False, message=str(ve), status=404)
