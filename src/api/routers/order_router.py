@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response
 
 from api.auth import get_current_user
+from api.cache import get_cache, save_cache
 from api.db_requests import db_requests_order as db_requests
 from api.pydantic_models import order_models as pydantic_models
 from api.pydantic_models.validators import ValidationError
@@ -86,8 +87,14 @@ async def get_order(
 
     response.status_code = 200
 
+    cache_key = f"order:{order_id}"
+
     try:
-        order = await db_requests.get_order(order_id)
+        order = await get_cache(cache_key)  # получения из кэша
+        if not order:
+            order = await db_requests.get_order(order_id)
+
+        await save_cache(cache_key, order)  # сохранение кэша
 
         if not order:
             return ServerResponse(
@@ -131,8 +138,10 @@ async def update_order_status(
     response.status_code = 200
 
     try:
-        # request.status уже является OrderStatus enum благодаря pydantic
         order = await db_requests.update_order_status(order_id, request.status)
+
+        cache_key = f"order:{order_id}"
+        await save_cache(cache_key, order)  # обновление кэша
 
         if not order:
             return ServerResponse(

@@ -13,6 +13,13 @@ class Config(BaseSettings):
     postgres_pass: str = '<PASSWORD>'
     postgres_db: str = 'db_name'
 
+    redis_host: str = '127.0.0.1'
+    redis_port: int = 6379
+    redis_user: str = 'redis'
+    redis_pass: str = "<PASSWORD>"
+
+    redis_cache_ttl: int = 60*5
+
     app_host: str = '127.0.0.1'
     app_port: int = 8000
     app_admin_pass: str = "<PASSWORD>"
