@@ -1,0 +1,198 @@
+name: order-management-service
+
+networks:
+  order-management-service.private:
+    name: order-management-service.private
+    driver: bridge
+    external: false
+
+services:
+  db.pg.server:
+    image: postgres:17
+    container_name: db.pg.server
+    hostname: db.pg.server
+    volumes:
+      - ../../postgres-data:/var/lib/postgresql/data
+    environment:
+      - TZ=Europe/Moscow
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASS}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - LC_COLLATE=en_US.utf8
+      - LC_CTYPE=en_US.utf8
+    command: [ "postgres", "-p", "${POSTGRES_PORT}", "-c", "timezone=Europe/Moscow" ]
+    ports:
+      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p ${POSTGRES_PORT}" ]
+      interval: 10s
+      timeout: 10s
+      retries: 7
+    restart: unless-stopped
+    networks:
+      - order-management-service.private
+
+  db.pg.ui:
+    container_name: db.pg.ui
+    hostname: db.pg.ui
+    image: sosedoff/pgweb
+    restart: unless-stopped
+    ports:
+      - 8081:8081
+    environment:
+      - PGWEB_DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASS}@db.server:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable
+    links:
+      - db.pg.server
+    depends_on:
+      db.pg.server:
+        condition: service_healthy
+    healthcheck:
+      test: curl -f http://localhost:8081 || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 3
+    networks:
+      - order-management-service.private
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+        tag: "{{.ImageName}}|{{.Name}}"
+
+  db.redis.server:
+    image: redis:8.4-alpine
+    container_name: db.redis.server
+    hostname: db.redis.server
+    ports:
+      - ${REDIS_PORT}:${REDIS_PORT}
+    restart: unless-stopped
+    networks:
+      - order-management-service.private
+    env_file:
+      - ../../.env
+    volumes:
+      - ../../redis.conf:/usr/local/etc/redis/redis.conf
+    command: sh -c "apk add --no-cache gettext && envsubst < /usr/local/etc/redis/redis.conf > /usr/local/etc/redis/generated.conf && redis-server /usr/local/etc/redis/generated.conf"
+
+  db.pg.migrate:
+    container_name: db.pg.migrate
+    build:
+      dockerfile: ./docker/Dockerfile-alembic
+      context: ../../
+    env_file:
+      - ../../.env
+    volumes:
+      - ../../alembic.ini:/app/alembic.ini
+      - ../../migrations:/app/migrations
+    command: alembic upgrade head
+    depends_on:
+      db.pg.server:
+        condition: service_healthy
+    networks:
+      - order-management-service.private
+
+
+  kafka:
+    image: apache/kafka-native
+    container_name: kafka
+    hostname: kafka
+    ports:
+#      - ${KAFKA_PORT}:${KAFKA_PORT}
+      - 9092:9092
+    restart: unless-stopped
+    environment:
+      KAFKA_LISTENERS: >
+        CONTROLLER://0.0.0.0:9091,
+        LOCAL://0.0.0.0:9092,
+        DOCKER://0.0.0.0:9093
+
+      KAFKA_ADVERTISED_LISTENERS: >
+        LOCAL://localhost:9092,
+        DOCKER://kafka:9093,
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >
+        CONTROLLER:PLAINTEXT,
+        LOCAL:PLAINTEXT,
+        DOCKER:PLAINTEXT
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9091
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - order-management-service.private
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui
+    container_name: kafka-ui
+    networks:
+      - order-management-service.private
+    depends_on:
+      - kafka
+    ports:
+      - 7777:8080
+    restart: unless-stopped
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=kafka
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9093
+
+  api.server:
+    build:
+      dockerfile: ./docker/Dockerfile
+      context: ../../
+    container_name: api.server
+    hostname: api.server
+    environment:
+      - APP_ENV=dev
+    env_file:
+      - ../../.env
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    networks:
+      - order-management-service.private
+    volumes:
+      - ../../src:/app/src
+    command: uvicorn "main:app" --host=${APP_HOST} --port=${APP_PORT} --loop="asyncio" --log-level="info" --reload
+    depends_on:
+      db.pg.server:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl --fail http://localhost:${APP_PORT}/api/health || exit 1" ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  api.worker:
+    build:
+      dockerfile: ./docker/Dockerfile
+      context: ../../
+    container_name: api.worker
+    env_file:
+      - ../../.env
+    hostname: api.worker
+    command: celery -A src.api.celery_worker.celery_app worker --loglevel=info -Q orders
+    depends_on:
+      - db.redis.server
+    restart: unless-stopped
+    networks:
+      - order-management-service.private
+
+  flower:
+    image: mher/flower:2.0.1
+    container_name: flower
+    hostname: flower
+    ports:
+      - '5577:5555'
+    environment:
+      - CELERY_BROKER_URL=redis://${REDIS_USER}:${REDIS_PASS}@${REDIS_HOST}:${REDIS_PORT}/0
+      - FLOWER_TZ=Europe/Moscow
+    restart: unless-stopped
+    networks:
+      - order-management-service.private
+    depends_on:
+      - db.redis.server

@@ -1,0 +1,9 @@
+__pycache__
+.git
+.idea
+venv
+venv311
+.pytest_cache
+postgres-data
+minio-storage
+local-storage
