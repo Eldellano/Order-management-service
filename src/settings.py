@@ -20,6 +20,10 @@ class Config(BaseSettings):
 
     redis_cache_ttl: int = 60*5
 
+    kafka_host: str = '127.0.0.1'
+    kafka_port: int = 9092
+    kafka_topic: str = 'order_management_service'
+
     app_host: str = '127.0.0.1'
     app_port: int = 8000
     app_admin_pass: str = "<PASSWORD>"

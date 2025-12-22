@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -6,15 +7,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_limiter import FastAPILimiter
 
 from api.routers.main_router import main_router
+from connectors.kafka import kafka_consumer_loop
 from connectors.redis_db import redis_db
 from settings import settings
+
+consumer_task: asyncio.Task | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global consumer_task
+
     await FastAPILimiter.init(redis_db)
+
+    consumer_task = asyncio.create_task(kafka_consumer_loop())
+
     yield
     await FastAPILimiter.close()
+
+    if consumer_task:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(

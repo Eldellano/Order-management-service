@@ -13,6 +13,7 @@ from api.schemas import (
     ServerErrorResponse500,
     ServerResponse,
 )
+from connectors.kafka import send_kafka_message
 
 order_router = APIRouter(prefix="/orders", tags=["order_api"])
 
@@ -46,7 +47,10 @@ async def create_order(
         )
 
         if new_order:
-            print(f"{new_order=}")
+            await send_kafka_message(
+                key="new_order", message=new_order
+            )  # запись заказа в kafka
+
             return ServerResponse(
                 data=pydantic_models.OrderResponse(**new_order),
                 success=True,
