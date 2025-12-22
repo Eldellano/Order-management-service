@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_limiter import FastAPILimiter
 
 from api.routers.main_router import main_router
-from connectors.kafka import kafka_consumer_loop
+from connectors.kafka import kafka_consumer_loop, start_producer, stop_producer
 from connectors.redis_db import redis_db
 from settings import settings
 
@@ -20,10 +20,14 @@ async def lifespan(app: FastAPI):
 
     await FastAPILimiter.init(redis_db)
 
+    await start_producer()
+
     consumer_task = asyncio.create_task(kafka_consumer_loop())
 
     yield
     await FastAPILimiter.close()
+
+    await stop_producer()
 
     if consumer_task:
         consumer_task.cancel()
