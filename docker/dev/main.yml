@@ -40,7 +40,7 @@ services:
     ports:
       - 8081:8081
     environment:
-      - PGWEB_DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASS}@db.server:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable
+      - PGWEB_DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASS}@db.pg.server:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable
     links:
       - db.pg.server
     depends_on:
@@ -98,7 +98,6 @@ services:
     container_name: kafka
     hostname: kafka
     ports:
-#      - ${KAFKA_PORT}:${KAFKA_PORT}
       - 9092:9092
     restart: unless-stopped
     environment:
